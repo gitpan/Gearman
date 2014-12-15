@@ -1,3 +1,22 @@
+1.12 (2014-12-14)
+
+     -- Repoint HACKING file.
+
+     -- Make a jobserver connection use the command timeout during exception negotiation.
+
+     -- Make $taskset->add_task use the command timeout to not hang during job submission.
+
+     -- Add a client option 'command_timeout' to indicate how long we should wait before considering a
+        gearman command to have failed. This not the same as a job timeout, and only affects commands
+        that should generally not block apart from the roundtrip on the network.
+
+     -- When a connection to a gearman server fails, start counting how many failures we've had and
+        do an exponential backoff (1s, 4s, 9s, 16s...) to a maximum of 90 seconds (default) that we
+        treat the server as 'gone' quickly.
+
+     -- Change dispatch_background to share code paths with other dispatching, this will make
+        background jobs now be hashed to a particular server (rather than handed to a random server)
+
 1.11 (2010-01-17)
 
      -- Switch read_res_packet to use sysread with a large buffer and offsets. This improves
