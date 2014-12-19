@@ -58,20 +58,18 @@ sub handle {
 }
 
 package Gearman::Worker;
+use base 'Gearman::Base';
+
 use Socket qw(IPPROTO_TCP TCP_NODELAY SOL_SOCKET PF_INET SOCK_STREAM);
 
 use fields (
-            'job_servers',
-            'js_count',
-            'prefix',
-            'debug',
             'sock_cache',        # host:port -> IO::Socket::INET
             'last_connect_fail', # host:port -> unixtime
             'down_since',        # host:port -> unixtime
             'connecting',        # host:port -> unixtime connect started at
             'can',               # ability -> subref     (ability is func with optional prefix)
             'timeouts',          # ability -> timeouts
-            'client_id',         # random identifer string, no whitespace
+            'client_id',         # random identifier string, no whitespace
             'parent_pipe',       # bool/obj:  if we're a child process of a gearman server,
                                  #   this is socket to our parent process.  also means parent
                                  #   sock can never disconnect or timeout, etc..
@@ -96,17 +94,15 @@ sub new {
     my $self = $class;
     $self = fields::new($class) unless ref $self;
 
-    $self->{job_servers} = [];
-    $self->{js_count} = 0;
+    $self->SUPER::new(debug => delete $opts{debug}, prefix => delete $opts{prefix});
+
     $self->{sock_cache} = {};
     $self->{last_connect_fail} = {};
     $self->{down_since} = {};
     $self->{can} = {};
     $self->{timeouts} = {};
     $self->{client_id} = join("", map { chr(int(rand(26)) + 97) } (1..30));
-    $self->{prefix}   = undef;
 
-    $self->debug($opts{debug}) if $opts{debug};
 
     if ($ENV{GEARMAN_WORKER_USE_STDIO}) {
         open my $sock, '+<&', \*STDIN or die "Unable to dup STDIN to socket for worker to use.";
@@ -236,7 +232,7 @@ sub uncache_sock {
     # parent process respawns us...
     die "Error/timeout talking to gearman parent process: [$reason]" if $self->{parent_pipe};
 
-    # normal case, we just close this TCP connectiona and we'll reconnect later.
+    # normal case, we just close this TCP connection and we'll reconnect later.
     delete $self->{sock_cache}{$ipport};
 }
 
@@ -479,26 +475,10 @@ sub _register_all {
 sub job_servers {
     my Gearman::Worker $self = shift;
     return if ($ENV{GEARMAN_WORKER_USE_STDIO});
-    return $self->{job_servers} unless @_;
-    my $list = [ @_ ];
-    $self->{js_count} = scalar @$list;
-    foreach (@$list) {
-        $_ .= ":7003" unless /:/;
-    }
-    return $self->{job_servers} = $list;
+
+    return $self->SUPER::job_servers(@_);
 }
 
-sub prefix {
-    my Gearman::Worker $self = shift;
-    return $self->{prefix} unless @_;
-    $self->{prefix} = shift;
-}
-
-sub debug {
-    my Gearman::Worker $self = shift;
-    $self->{debug} = shift if @_;
-    return $self->{debug} || 0;
-}
 
 1;
 __END__
@@ -557,9 +537,9 @@ Initializes the worker I<$worker> with the list of job servers in I<@servers>.
 I<@servers> should contain a list of IP addresses, with optional port numbers.
 For example:
 
-    $worker->job_servers('127.0.0.1', '192.168.1.100:7003');
+    $worker->job_servers('127.0.0.1', '192.168.1.100:4730');
 
-If the port number is not provided, 7003 is used as the default.
+If the port number is not provided, 4730 is used as the default.
 
 Calling this method will do nothing in a worker that is running as a child
 process of a gearman server.
@@ -593,7 +573,7 @@ instances of the same application (different development sandboxes for
 example).
 
 The namespace is currently implemented as a simple tab separated
-concatentation of the prefix and the function name.
+concatenation of the prefix and the function name.
 
 =head2 Gearman::Job->arg
 
@@ -612,7 +592,7 @@ You can pass "on_start" "on_complete" and "on_fail" callbacks in I<%opts>.
 
 =head1 WORKERS AS CHILD PROCESSES
 
-Gearman workers can be run run as child processes of a parent process
+Gearman workers can be run as child processes of a parent process
 which embeds L<Gearman::Server>.  When such a parent process
 fork/execs a worker, it sets the environment variable
 GEARMAN_WORKER_USE_STDIO to true before launching the worker. If this

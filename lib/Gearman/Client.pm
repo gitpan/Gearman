@@ -3,13 +3,14 @@
 package Gearman::Client;
 
 our $VERSION;
-$VERSION = '1.12';
+$VERSION = '1.12.001';
 
 use strict;
 use IO::Socket::INET;
 use Socket qw(IPPROTO_TCP TCP_NODELAY SOL_SOCKET);
 use Time::HiRes;
 
+use base 'Gearman::Base';
 use Gearman::Objects;
 use Gearman::Task;
 use Gearman::Taskset;
@@ -20,24 +21,16 @@ sub new {
     my Gearman::Client $self = $class;
     $self = fields::new($class) unless ref $self;
 
-    $self->{job_servers} = [];
-    $self->{js_count} = 0;
+    $self->SUPER::new(%opts);
+
     $self->{sock_cache} = {};
     $self->{hooks} = {};
-    $self->{prefix} = '';
     $self->{exceptions} = 0;
     $self->{backoff_max} = 90;
     $self->{command_timeout} = 30;
 
-    $self->debug($opts{debug}) if $opts{debug};
-
-    $self->set_job_servers(@{ $opts{job_servers} })
-        if $opts{job_servers};
-
     $self->{exceptions} = delete $opts{exceptions}
         if exists $opts{exceptions};
-
-    $self->prefix($opts{prefix}) if $opts{prefix};
 
     $self->{backoff_max} = $opts{backoff_max}
         if defined $opts{backoff_max};
@@ -55,38 +48,13 @@ sub new_task_set {
     return $taskset;
 }
 
-# getter/setter
-sub job_servers {
-    my Gearman::Client $self = shift;
-    unless (@_) {
-        return wantarray ? @{$self->{job_servers}} : $self->{job_servers};
-    }
-    $self->set_job_servers(@_);
-}
-
-sub _canonicalize_job_servers {
-    my $list = ref $_[0] ? $_[0] : [ @_ ]; # take arrayref or array
-    foreach (@$list) {
-        $_ .= ":7003" unless /:/;
-    }
-    return $list;
-}
-
-sub set_job_servers {
-    my Gearman::Client $self = shift;
-    my $list = _canonicalize_job_servers(@_);
-
-    $self->{js_count} = scalar @$list;
-    return $self->{job_servers} = $list;
-}
-
 sub _job_server_status_command {
     my Gearman::Client $self = shift;
     my $command = shift; # e.g. "status\n".
     my $each_line_sub = shift; # A sub to be called on each line of response;
                                # takes $hostport and the $line as args.
 
-    my $list = _canonicalize_job_servers(@_);
+    my $list = $self->canonicalize_job_servers(@_);
     $list = $self->{job_servers} unless @$list;
 
     foreach my $hostport (@$list) {
@@ -262,6 +230,11 @@ sub get_status {
     my Gearman::Client $self = shift;
     my $handle = shift;
     my ($hostport, $shandle) = split(m!//!, $handle);
+
+    #TODO simple check for $hostport in job_server doesn't work if
+    # $hostport is not contained in job_servers
+    # job_servers = ["localhost:4730"]
+    # handle = 127.0.0.1:4730//H:...
     return undef unless grep { $hostport eq $_ } @{ $self->{job_servers} };
 
     my $sock = $self->_get_js_sock($hostport)
@@ -271,7 +244,6 @@ sub get_status {
                                               $shandle);
     my $len = length($req);
     my $rv = $sock->write($req, $len);
-
     my $err;
     my $res = Gearman::Util::read_res_packet($sock, \$err);
 
@@ -379,18 +351,6 @@ sub _get_random_js_sock {
     return ();
 }
 
-sub prefix {
-    my Gearman::Client $self = shift;
-    return $self->{prefix} unless @_;
-    $self->{prefix} = shift;
-}
-
-sub debug {
-    my Gearman::Client $self = shift;
-    $self->{debug} = shift if @_;
-    return $self->{debug} || 0;
-}
-
 1;
 __END__
 
@@ -456,9 +416,9 @@ Initializes the client I<$client> with the list of job servers in I<@servers>.
 I<@servers> should contain a list of IP addresses, with optional port
 numbers. For example:
 
-    $client->job_servers('127.0.0.1', '192.168.1.100:7003');
+    $client->job_servers('127.0.0.1', '192.168.1.100:4730');
 
-If the port number is not provided, C<7003> is used as the default.
+If the port number is not provided, C<4730> is used as the default.
 
 =head2 $client-E<gt>do_task($task)
 
@@ -541,7 +501,5 @@ This is free software.  This comes with no warranty whatsoever.
 
  Brad Fitzpatrick (brad@danga.com)
  Jonathan Steinert (hachi@cpan.org)
-
-=cut
 
 =cut
