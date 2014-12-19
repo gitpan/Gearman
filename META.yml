@@ -28,4 +28,4 @@ requires:
   String::CRC32: 0
   Time::HiRes: 0
   fields: 0
-version: v1.12.001
+version: v1.12.002
